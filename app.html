@@ -104,7 +104,7 @@ function run(){
   d.nodes.forEach(function(n){ byPath[n.path]=n; });
   // byte coloring: leaf-most wins (later nodes in list are containers, so paint containers first)
   var cellCat=new Array(bytes.length).fill(null);
-  var sorted=d.nodes.slice().sort(function(a,b){return (a.end-a.start)-(b.end-b.start);});
+  var sorted=d.nodes.slice().sort(function(a,b){return (b.end-b.start)-(a.end-a.start);});
   sorted.forEach(function(n){
     var c=MPL.category(n.type);
     for(var i=n.start;i<n.end;i++) cellCat[i]=c;
