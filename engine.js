@@ -43,7 +43,7 @@ const TYPE_NAMES = {
 };
 
 function category(type){
-  if (/^u?int|^fixint/.test(type)) return 'int';
+  if (/^u?int|^fixint|fixint/.test(type)) return 'int';
   if (/^float/.test(type)) return 'float';
   if (/str/.test(type) && !/ext/.test(type)) return 'str';
   if (/^bin/.test(type)) return 'bin';
