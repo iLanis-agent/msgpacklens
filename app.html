@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MsgPackLens - see your MessagePack bytes</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128230;</text></svg>">
+<style>
+:root{--bg:#0d1117;--panel:#161b22;--panel2:#1c2330;--line:#2d3646;--fg:#e6edf3;--dim:#8b98a9;--ok:#3fb950;--warn:#d29922;--bad:#f85149;--acc:#58a6ff;
+--c-int:#58a6ff;--c-str:#3fb950;--c-bin:#d29922;--c-float:#bc8cff;--c-array:#39c5cf;--c-map:#ff7b72;--c-ext:#8b98a9;--c-atom:#6e7681}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.5 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:1060px;margin:0 auto;padding:24px 16px 80px}
+h1{font-size:26px;margin:0 0 4px}
+.sub{color:var(--dim);margin:0 0 18px}
+a{color:var(--acc)}
+textarea{width:100%;min-height:90px;background:var(--panel2);color:var(--fg);border:1px solid var(--line);border-radius:8px;padding:12px;font:12.5px/1.45 ui-monospace,Menlo,monospace;resize:vertical}
+label{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);display:block;margin:0 0 6px}
+.panel{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px}
+.presets{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0}
+button.ghost{background:transparent;color:var(--acc);border:1px solid var(--line);border-radius:8px;padding:6px 10px;font-size:12.5px;cursor:pointer}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:14px 16px;margin-top:14px}
+.card h3{margin:0 0 8px;font-size:13px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);font-weight:600}
+.strip{display:flex;flex-wrap:wrap;gap:1px;font:10px/1 ui-monospace,Menlo,monospace}
+.strip .byte{width:22px;height:26px;display:flex;align-items:center;justify-content:center;border-radius:3px;background:var(--panel2);color:var(--bg);cursor:default;font-weight:600}
+.strip .byte.dim{background:var(--panel2);color:var(--dim);font-weight:400}
+.strip .byte.hl{outline:2px solid #fff;z-index:1}
+.legend{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px;font-size:12px;color:var(--dim)}
+.legend span::before{content:'';display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:5px;background:var(--c)}
+.tree{font:13px/1.7 ui-monospace,Menlo,monospace}
+.tree .row{padding:1px 6px;border-radius:4px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tree .row.hl{background:#fff2}
+.tree .kids{margin-left:18px;border-left:1px solid var(--line);padding-left:8px}
+.tbadge{display:inline-block;min-width:74px;font-size:11px;color:var(--dim)}
+.path{color:var(--dim);font-size:11px}
+.big{font-size:18px;font-weight:600;margin:2px 0}
+.badge{display:inline-block;border-radius:20px;padding:2px 10px;font-size:12px;margin:2px 4px 2px 0;border:1px solid var(--line)}
+.meta{color:var(--dim);font-size:12.5px;margin-top:24px}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>&#128230; MsgPackLens</h1>
+<p class="sub">Paste MessagePack bytes (hex or base64). See the decoded value as a tree, every byte accounted for, hover to connect tree nodes to their exact bytes. Full-spec decoder, verified against the real msgpack library. <a href="index.html">About</a></p>
+<div class="panel">
+<label>MessagePack bytes - hex (spaces ok) or base64</label>
+<textarea id="inp" spellcheck="false" placeholder="86 a2 69 64 2a ..."></textarea>
+<div class="presets" id="presets"></div>
+</div>
+<div id="out"></div>
+<p class="meta">Everything decodes in your browser - nothing is uploaded. Presets are encoded in-page by the same engine, then decoded. Tested against the real msgpack library for values and canonical bytes, plus an independent span walker for byte ranges (tests/).</p>
+</div>
+<script src="engine.js?v=378"></script>
+<script>
+var PRESETS=[
+ ["API response",{id:42,name:"widget",price:19.99,tags:["new","sale"],in_stock:true,meta:null}],
+ ["ints - every width",{zero:0,pos_fix:127,pos_u8:200,pos_u16:60000,pos_u32:70000,neg_fix:-32,neg_i8:-100,neg_i16:-1000,neg_i32:-70000,big:"__BIG__4611686018427387904"}],
+ ["floats",{f:1.5,neg:-0.125,big:1e300,denorm:5e-324}],
+ ["strings",{empty:"",fix:"hello",s8:"xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",unicode:"h\u00e9llo w\u00f6rld \u2713",emoji:"\ud83c\udf89"}],
+ ["nested arrays",{matrix:[[1,2],[3,4]],deep:{a:{b:{c:[1,2,3]}}}}],
+ ["binary blob",{avatar:"__BINRAW__0040",sha:"__BINRAW__0020"}],
+ ["ext type (pasted hex)","__HEX__81a27473d62a00000001"]
+];
+(function(){
+"use strict";
+var MPL=MsgPackLens;
+function revive(v){
+  if(Array.isArray(v)) return v.map(revive);
+  if(v&&typeof v==='object'){var o={};for(var k in v)o[k]=revive(v[k]);return o;}
+  if(typeof v==='string'){
+    if(v.indexOf('__BIG__')===0) return BigInt(v.slice(7));
+    if(v.indexOf('__BINRAW__')===0){var n=parseInt(v.slice(10),16);var u=new Uint8Array(n);for(var i=0;i<n;i++)u[i]=i&0xff;return u;}
+  }
+  return v;
+}
+var pr=document.getElementById('presets');
+PRESETS.forEach(function(p){
+  var b=document.createElement('button'); b.className='ghost'; b.textContent=p[0];
+  b.onclick=function(){
+    if(typeof p[1]==='string'&&p[1].indexOf('__HEX__')===0){ document.getElementById('inp').value=p[1].slice(7); }
+    else { document.getElementById('inp').value=MPL.toHex(MPL.encode(revive(p[1]))); }
+    run();
+  };
+  pr.appendChild(b);
+});
+document.getElementById('inp').addEventListener('input', run);
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function catClass(t){ return 'cat-'+MPL.category(t); }
+var CATCOLORS={int:'var(--c-int)',str:'var(--c-str)',bin:'var(--c-bin)',float:'var(--c-float)',array:'var(--c-array)',map:'var(--c-map)',ext:'var(--c-ext)',atom:'var(--c-atom)'};
+function run(){
+  var text=document.getElementById('inp').value.trim();
+  var out=document.getElementById('out');
+  out.innerHTML='';
+  if(!text) return;
+  var bytes;
+  try{
+    bytes=/^[0-9a-fA-F\s]+$/.test(text)?MPL.fromHex(text):MPL.fromBase64(text);
+    if(!bytes.length) throw new Error('empty input');
+  }catch(e){ out.innerHTML='<div class="card"><div class="big" style="color:var(--bad)">Not valid hex or base64</div><p>'+esc(e.message)+'</p></div>'; return; }
+  var d;
+  try{ d=MPL.decode(bytes); }
+  catch(e){ out.innerHTML='<div class="card"><div class="big" style="color:var(--bad)">Decode error</div><p style="font-family:monospace">'+esc(e.message)+'</p></div>'; return; }
+  var byPath={};
+  d.nodes.forEach(function(n){ byPath[n.path]=n; });
+  // byte coloring: leaf-most wins (later nodes in list are containers, so paint containers first)
+  var cellCat=new Array(bytes.length).fill(null);
+  var sorted=d.nodes.slice().sort(function(a,b){return (b.end-b.start)-(a.end-a.start);});
+  sorted.forEach(function(n){
+    var c=MPL.category(n.type);
+    for(var i=n.start;i<n.end;i++) if(cellCat[i]===null) cellCat[i]=c;
+  });
+  var strip='<div class="strip" id="strip">';
+  for(var i=0;i<bytes.length;i++){
+    var c=cellCat[i];
+    strip+='<span class="byte'+(c?'':' dim')+'" data-i="'+i+'" style="'+(c?'background:'+CATCOLORS[c]:'')+'">'+bytes[i].toString(16).padStart(2,'0')+'</span>';
+  }
+  strip+='</div>';
+  var legend='<div class="legend">'+Object.keys(CATCOLORS).map(function(c){return '<span style="--c:'+CATCOLORS[c]+'">'+c+'</span>';}).join('')+'</div>';
+  function preview(v){
+    if(v===null) return 'nil';
+    if(typeof v==='string') return JSON.stringify(v.length>36?v.slice(0,36)+'\u2026':v);
+    if(typeof v==='number') return String(v);
+    if(v&&v.$bin) return 'binary, '+v.len+' bytes';
+    if(v&&v.$ext) return 'ext type '+v.$ext.type+', '+(v.$ext.data.length/2)+' bytes';
+    if(Array.isArray(v)) return v.length+' items';
+    if(typeof v==='object') return Object.keys(v).length+' entries';
+    return String(v);
+  }
+  function renderTree(v, path){
+    var n=byPath[path];
+    var badge=n?n.type:'?';
+    var row='<div class="row" data-path="'+esc(path)+'"><span class="tbadge">'+esc(badge)+'</span> '+esc(preview(v))+' <span class="path">'+esc(path)+'</span></div>';
+    var kids='';
+    if(Array.isArray(v)){
+      kids='<div class="kids">'+v.map(function(x,i){return renderTree(x,path+'['+i+']');}).join('')+'</div>';
+    } else if(v&&typeof v==='object'&&!v.$bin&&!v.$ext){
+      kids='<div class="kids">'+Object.keys(v).map(function(k){return renderTree(v[k],path+'.'+k);}).join('')+'</div>';
+    }
+    return row+kids;
+  }
+  var rootN=byPath['$'];
+  out.innerHTML='<div class="card"><h3>'+d.bytes+' bytes - root '+(rootN?esc(rootN.type):'?')+'</h3>'+strip+legend+'</div>'
+    +'<div class="card"><h3>Decoded tree</h3><div class="tree" id="tree">'+renderTree(d.value,'$')+'</div></div>';
+  // hover sync
+  var cells=document.querySelectorAll('#strip .byte');
+  var rows=document.querySelectorAll('#tree .row');
+  function clearHl(){ document.querySelectorAll('.hl').forEach(function(x){x.classList.remove('hl');}); }
+  cells.forEach(function(cell){
+    cell.addEventListener('mouseenter',function(){
+      clearHl();
+      var i=parseInt(cell.dataset.i,10);
+      cell.classList.add('hl');
+      var best=null;
+      d.nodes.forEach(function(n){ if(i>=n.start&&i<n.end&&(!best||(n.end-n.start)<(best.end-best.start))) best=n; });
+      if(best){
+        rows.forEach(function(r){ if(r.dataset.path===best.path) r.classList.add('hl'); });
+        for(var j=best.start;j<best.end;j++) cells[j].classList.add('hl');
+      }
+    });
+  });
+  rows.forEach(function(row){
+    row.addEventListener('mouseenter',function(){
+      clearHl();
+      var n=byPath[row.dataset.path];
+      row.classList.add('hl');
+      if(n) for(var j=n.start;j<n.end;j++) cells[j].classList.add('hl');
+    });
+  });
+  document.getElementById('out').addEventListener('mouseleave', clearHl);
+}
+run();
+})();
+</script>
+</body>
+</html>
