@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MsgPackLens - MessagePack byte viewer</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>&#128230;</text></svg>">
+<style>
+body{margin:0;background:#0d1117;color:#e6edf3;font:16px/1.6 -apple-system,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+.wrap{max-width:760px;margin:0 auto;padding:48px 20px}
+h1{font-size:34px;margin:0 0 12px}
+p{color:#8b98a9}
+a.btn{display:inline-block;background:#58a6ff;color:#0d1117;font-weight:600;padding:12px 24px;border-radius:8px;text-decoration:none;margin-top:20px}
+ul{color:#8b98a9}
+</style>
+</head>
+<body>
+<div class="wrap">
+<h1>&#128230; MsgPackLens</h1>
+<p>Paste MessagePack bytes (hex or base64) and see exactly what they decode to - a collapsible tree of the value, and a color-coded byte strip where hovering any byte shows which node it belongs to, and hovering any tree node highlights its exact byte range.</p>
+<ul>
+<li>Full MessagePack spec: every int/uint/str/bin/array/map width, floats, ext, fixext</li>
+<li>Canonical minimal encoder (in-page presets are encoded, then decoded)</li>
+<li>Byte-span tracking per node for the hover sync</li>
+<li>Precise errors: invalid type bytes, truncation offsets, trailing data, bad UTF-8</li>
+<li>Verified against the real msgpack library + an independent span walker</li>
+</ul>
+<a class="btn" href="app.html">Decode some bytes</a>
+</div>
+</body>
+</html>
